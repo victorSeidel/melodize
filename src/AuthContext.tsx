@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface User { id: number; username: string; email: string; profile: string; }
 
-interface AuthContextType {
+interface AuthContextType 
+{
     user: User | null;
     token: string | null;
     apiUrl: string;
@@ -21,8 +22,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const apiUrl  = import.meta.env.VITE_API_URL;
     const baseUrl = import.meta.env.VITE_BASE_URL;
+    const apiUrl  = import.meta.env.VITE_API_URL;
 
     useEffect(() => 
     {
@@ -42,7 +43,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     {
         try 
         {
-            const response = await fetch(`${apiUrl}/login`, {
+            const response = await fetch(`${apiUrl}/login`, 
+            {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
@@ -65,8 +67,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const register = async (username: string, email: string, password: string) => 
     {
-        try {
-            const response = await fetch(`${apiUrl}/register`, {
+        try 
+        {
+            const response = await fetch(`${apiUrl}/register`, 
+            {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, email, password }),
@@ -91,17 +95,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sessionStorage.removeItem('user');
     };
 
-  return (
-    <AuthContext.Provider value={{ user, token, apiUrl, baseUrl, login, register, logout, loading }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={{ user, token, apiUrl, baseUrl, login, register, logout, loading }}>
+            {children}
+        </AuthContext.Provider>
+    );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+export const useAuth = () => 
+{
+    const context = useContext(AuthContext);
+    if (context === undefined) { throw new Error('useAuth must be used within an AuthProvider'); }
+    return context;
 };

@@ -46,6 +46,7 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 const db = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 3306,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
@@ -111,7 +112,7 @@ app.post('/api/login', async (req, res) =>
             { expiresIn: '1d' }
         );
         
-        res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
+        res.json({ token, user: { id: user.id, username: user.username, email: user.email, profile: user.profile } });
     } 
     catch (error) 
     {
@@ -161,7 +162,6 @@ app.get('/api/songs/:id', authenticateToken, async (req, res) =>
         const { id } = req.params;
         
         const [rows] = await db.execute('SELECT * FROM songs WHERE id = ?', [id]);
-        
         if (rows.length === 0) return res.status(404).json({ error: 'Song not found' });
         
         res.json(rows);
@@ -180,12 +180,14 @@ app.delete('/api/songs/:id', authenticateToken, async (req, res) =>
         const { id } = req.params;
         const userId = req.user.id;
 
-        const [check] = await db.execute('SELECT * FROM songs WHERE id = ? AND user_id = ?',[id, userId]);
+        const [userRows] = await db.execute('SELECT profile FROM users WHERE id = ?', [userId]);
+        if (userRows.length === 0) return res.status(404).json({ error: 'Erro ao buscar usuário' });
+        const user = rows[0];
 
-        if (check.length === 0) return res.status(404).json({ error: 'Música não encontrada ou não pertence ao usuário' });
+        const isAdmin = user.profile === 'admin';
+        if (!isAdmin && check.length === 0) return res.status(401).json({ error: 'Necessário admin para excluir música' });
 
-        const [result] = await db.execute('DELETE FROM songs WHERE id = ? AND user_id = ?', [id, userId]);
-
+        const [result] = await db.execute('DELETE FROM songs WHERE id = ?', [id]);
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Nenhuma música foi deletada' });
 
         res.json({ success: true, message: 'Música deletada com sucesso' });
@@ -327,11 +329,9 @@ app.delete('/api/recordings/:id', authenticateToken, async (req, res) =>
         const userId = req.user.id;
 
         const [check] = await db.execute('SELECT * FROM recordings WHERE id = ? AND user_id = ?',[id, userId]);
-
         if (check.length === 0) return res.status(404).json({ error: 'Gravação não encontrada ou não pertence ao usuário' });
 
         const [result] = await db.execute('DELETE FROM recordings WHERE id = ? AND user_id = ?', [id, userId]);
-
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Nenhuma gravação foi deletada' });
 
         res.json({ success: true, message: 'Gravação deletada com sucesso' });
