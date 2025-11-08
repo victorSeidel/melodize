@@ -21,8 +21,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const apiUrl  = "https://melodize-backend.gj8pu6.easypanel.host/api";
-    const baseUrl = "https://melodize-backend.gj8pu6.easypanel.host";
+    const apiUrl  = import.meta.env.VITE_API_URL;
+    const baseUrl = import.meta.env.VITE_BASE_URL;
 
     useEffect(() => 
     {
