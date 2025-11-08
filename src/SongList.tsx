@@ -137,7 +137,7 @@ const SongList: React.FC = () =>
           <p className="text-gray-300">Crie suas melodias sobre playbacks profissionais</p>
         </div>
         <div className="flex gap-4">
-          {user && user?.id === 1 && (
+          {user && user?.profile === 'admin' && (
           <button onClick={() => setShowModal(true)}
               className="bg-emerald-400 text-white px-4 py-2 rounded-md hover:bg-emerald-600 transition">
             + Adicionar Música
@@ -217,7 +217,7 @@ const SongList: React.FC = () =>
                   className="mt-4 bg-emerald-400 text-black py-2 rounded-lg font-semibold hover:bg-emerald-500 transition o">
                 Compor Melodia
               </button>
-              {user && user?.id === 1 && (
+              {user && user?.profile === 'admin' && (
               <button onClick={() => handleDeleteSong(song.id)}
                   className="bg-red-400 text-black py-2 rounded-lg font-semibold hover:bg-red-500 transition o">
                 Excluir Melodia

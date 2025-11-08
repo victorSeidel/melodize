@@ -17,17 +17,19 @@ const __dirname = dirname(__filename);
 
 const app = express();
 
-const corsOptions = {
+const corsOptions = 
+{
     origin: ['http://localhost:5173', 'http://localhost:3000', 'https://melodize-backend.gj8pu6.easypanel.host'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 };
-
 app.use(cors(corsOptions));
 
-app.use((req, res, next) => {
-    if (req.method === 'OPTIONS') {
+app.use((req, res, next) => 
+{
+    if (req.method === 'OPTIONS') 
+    {
         res.header('Access-Control-Allow-Origin', req.headers.origin);
         res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
         res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
@@ -43,16 +45,16 @@ app.use('/uploads', express.static('uploads'));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 const db = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'audio_recorder',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
-const storage = multer.diskStorage({
+const storage = multer.diskStorage({ 
     destination: (req, file, cb) => { cb(null, 'uploads/'); },
     filename: (req, file, cb) => { cb(null, Date.now() + path.extname(file.originalname)); }
 });
