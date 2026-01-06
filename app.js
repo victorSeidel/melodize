@@ -137,7 +137,7 @@ app.post('/api/songs', authenticateToken, upload.single('audio'), async (req, re
     catch (error) 
     {
         console.error(error);
-        res.status(500).json({ error: 'Failed to save song' });
+        res.status(500).json({ error: 'Falha ao inserir música' });
     }
 });
 
