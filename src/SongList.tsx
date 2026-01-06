@@ -135,12 +135,10 @@ const SongList: React.FC = () =>
                 <p className="text-gray-300">Crie suas melodias sobre playbacks profissionais</p>
                 </div>
                 <div className="flex gap-4">
-                {user && user?.profile === 'admin' && (
                 <button onClick={() => setShowModal(true)}
                     className="bg-emerald-400 text-white px-4 py-2 rounded-md hover:bg-emerald-600 transition">
                     + Adicionar Música
                 </button>
-                )}
                 <button onClick={() => navigate(`/songs/1/recordings`)}
                     className="bg-emerald-400 text-white px-4 py-2 rounded-md hover:bg-emerald-600 transition">
                     Suas Gravações

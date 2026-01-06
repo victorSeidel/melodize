@@ -7,44 +7,46 @@ interface Song { id: number; name: string; description: string; genre: string; b
 interface AudioTrack { buffer: AudioBuffer | null; volume: number; name: string; }
 interface Position { current: number; duration: number; }
 interface RecordingSegment { buffer: AudioBuffer; startTime: number; endTime: number; }
-interface LiveRecording { samples: Float32Array; startTime: number; }
+// LiveRecording now only holds metadata; samples are stored in recordingChunksRef
+interface LiveRecording { startTime: number; sampleCount: number; }
 
-const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, onCancel }) => 
-{
-    const { token, apiUrl, baseUrl } = useAuth();
-    const [songData, setSongData] = useState<Song | null>(null);
+const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, onCancel }) => {
+  const { token, apiUrl, baseUrl } = useAuth();
+  const [songData, setSongData] = useState<Song | null>(null);
 
-    const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-    const [musicTrack, setMusicTrack] = useState<AudioTrack>({ buffer: null, volume: 0.5, name: '' });
-    const [voiceTrack, setVoiceTrack] = useState<AudioTrack>({ buffer: null, volume: 0.8, name: 'GravaÃ§Ã£o de Voz' });
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [isRecording, setIsRecording] = useState(false);
-    const [position, setPosition] = useState<Position>({ current: 0, duration: 0 });
-    const [recordingSegments, setRecordingSegments] = useState<RecordingSegment[]>([]);
-    const [sampleRate, setSampleRate] = useState<number>(44100);
-    const [liveRecording, setLiveRecording] = useState<LiveRecording | null>(null);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [musicTrack, setMusicTrack] = useState<AudioTrack>({ buffer: null, volume: 0.5, name: '' });
+  const [voiceTrack, setVoiceTrack] = useState<AudioTrack>({ buffer: null, volume: 0.8, name: 'GravaÃ§Ã£o de Voz' });
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [position, setPosition] = useState<Position>({ current: 0, duration: 0 });
+  const [recordingSegments, setRecordingSegments] = useState<RecordingSegment[]>([]);
+  const [sampleRate, setSampleRate] = useState<number>(44100);
+  const [liveRecording, setLiveRecording] = useState<LiveRecording | null>(null);
 
-    const musicCanvasRef = useRef<HTMLCanvasElement>(null);
-    const voiceCanvasRef = useRef<HTMLCanvasElement>(null);
-    const musicSourceRef = useRef<AudioBufferSourceNode | null>(null);
-    const voiceSourceRef = useRef<AudioBufferSourceNode | null>(null);
-    const musicGainRef = useRef<GainNode | null>(null);
-    const voiceGainRef = useRef<GainNode | null>(null);
-    const animationFrameRef = useRef<number>();
-    const startTimeRef = useRef<number>(0);
-    const startOffsetRef = useRef<number>(0);
-    const isDraggingRef = useRef<boolean>(false);
+  const musicCanvasRef = useRef<HTMLCanvasElement>(null);
+  const voiceCanvasRef = useRef<HTMLCanvasElement>(null);
+  const musicSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const voiceSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const musicGainRef = useRef<GainNode | null>(null);
+  const voiceGainRef = useRef<GainNode | null>(null);
+  const animationFrameRef = useRef<number>();
+  const startTimeRef = useRef<number>(0);
+  const startOffsetRef = useRef<number>(0);
+  const isDraggingRef = useRef<boolean>(false);
 
-    const mediaStreamRef = useRef<MediaStream | null>(null);
-    const micNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-    const processorRef = useRef<ScriptProcessorNode | null>(null);
-    const zeroGainRef = useRef<GainNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const micNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const zeroGainRef = useRef<GainNode | null>(null);
+  // Store raw audio chunks during recording to avoid O(n) copying on every frame
+  const recordingChunksRef = useRef<Float32Array[]>([]);
 
   useEffect(() => {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     setAudioContext(ctx);
     setSampleRate(ctx.sampleRate);
-    return () => { ctx.close().catch(() => {}); };
+    return () => { ctx.close().catch(() => { }); };
   }, []);
 
   const loadMusicTrack = useCallback(async (audioPath: string) => {
@@ -152,22 +154,59 @@ const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, 
       });
     }
 
-    if (live && totalDuration > 0 && live.samples.length > 0) {
+    // Draw live recording waveform from recordingChunksRef
+    if (live && totalDuration > 0 && live.sampleCount > 0) {
       const liveStartX = (live.startTime / totalDuration) * width;
-      const liveEndTime = live.startTime + live.samples.length / sampleRate;
+      const liveEndTime = live.startTime + live.sampleCount / sampleRate;
       const liveEndX = (liveEndTime / totalDuration) * width;
       const liveWidth = Math.max(0, liveEndX - liveStartX);
       if (liveWidth > 0) {
-        const samplesPerPixel = Math.max(1, Math.floor(live.samples.length / Math.max(1, liveWidth)));
+        // Merge chunks for visualization (only for drawing, not stored)
+        const chunks = recordingChunksRef.current;
+        const samplesPerPixel = Math.max(1, Math.floor(live.sampleCount / Math.max(1, liveWidth)));
         ctx.fillStyle = '#EF4444';
+
+        // Create a simple visualization by sampling from chunks
+        let chunkIdx = 0;
+        let sampleInChunk = 0;
+        let globalSampleIdx = 0;
+
         for (let i = 0; i < liveWidth; i++) {
-          const start = i * samplesPerPixel;
+          const targetSample = Math.floor(i * samplesPerPixel);
           let min = 1.0, max = -1.0;
-          for (let k = 0; k < samplesPerPixel && start + k < live.samples.length; k++) {
-            const s = live.samples[start + k];
+
+          // Advance to the target sample position
+          while (globalSampleIdx < targetSample && chunkIdx < chunks.length) {
+            const remaining = chunks[chunkIdx].length - sampleInChunk;
+            const needed = targetSample - globalSampleIdx;
+            if (remaining <= needed) {
+              globalSampleIdx += remaining;
+              chunkIdx++;
+              sampleInChunk = 0;
+            } else {
+              sampleInChunk += needed;
+              globalSampleIdx = targetSample;
+            }
+          }
+
+          // Sample values for this pixel
+          let sampledCount = 0;
+          let tempChunkIdx = chunkIdx;
+          let tempSampleInChunk = sampleInChunk;
+
+          while (sampledCount < samplesPerPixel && tempChunkIdx < chunks.length) {
+            const chunk = chunks[tempChunkIdx];
+            const s = chunk[tempSampleInChunk];
             if (s < min) min = s;
             if (s > max) max = s;
+            sampledCount++;
+            tempSampleInChunk++;
+            if (tempSampleInChunk >= chunk.length) {
+              tempChunkIdx++;
+              tempSampleInChunk = 0;
+            }
           }
+
           if (min !== 1.0 && max !== -1.0) {
             const barHeight = Math.max(1, (max - min) * height / 2);
             const y = height / 2 - barHeight / 2;
@@ -293,8 +332,6 @@ const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, 
       musicSourceRef.current.stop();
       musicSourceRef.current = null;
     }
-    setVoiceTrack(prev => ({ ...prev, volume: 0.8 }));
-    if (voiceGainRef.current) voiceGainRef.current.gain.value = 0.8;
     if (voiceSourceRef.current) {
       voiceSourceRef.current.stop();
       voiceSourceRef.current = null;
@@ -430,18 +467,29 @@ const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, 
       zero.gain.value = 0;
       zeroGainRef.current = zero;
       const recStartTime = position.current;
-      setLiveRecording({ samples: new Float32Array(0), startTime: recStartTime });
+      // Reset chunks array for new recording
+      recordingChunksRef.current = [];
+      setLiveRecording({ startTime: recStartTime, sampleCount: 0 });
+
+      // Track sample count for throttled UI updates
+      let totalSampleCount = 0;
+      let lastUpdateTime = performance.now();
+      const UPDATE_INTERVAL_MS = 100; // Throttle UI updates to ~10fps
+
       proc.onaudioprocess = (e: AudioProcessingEvent) => {
         const input = e.inputBuffer.getChannelData(0);
+        // O(1) operation: just copy and push the new chunk
         const frame = new Float32Array(input.length);
         frame.set(input);
-        setLiveRecording(prev => {
-          if (!prev) return null;
-          const grown = new Float32Array(prev.samples.length + frame.length);
-          grown.set(prev.samples, 0);
-          grown.set(frame, prev.samples.length);
-          return { ...prev, samples: grown };
-        });
+        recordingChunksRef.current.push(frame);
+        totalSampleCount += frame.length;
+
+        // Throttle state updates to avoid excessive re-renders
+        const now = performance.now();
+        if (now - lastUpdateTime >= UPDATE_INTERVAL_MS) {
+          lastUpdateTime = now;
+          setLiveRecording(prev => prev ? { ...prev, sampleCount: totalSampleCount } : null);
+        }
       };
       mic.connect(proc);
       proc.connect(zero);
@@ -459,21 +507,31 @@ const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, 
     if (!isRecording) return;
     if (processorRef.current) {
       processorRef.current.onaudioprocess = null as any;
-      try { processorRef.current.disconnect(); } catch {}
+      try { processorRef.current.disconnect(); } catch { }
     }
-    if (zeroGainRef.current) { try { zeroGainRef.current.disconnect(); } catch {} }
-    if (micNodeRef.current) { try { micNodeRef.current.disconnect(); } catch {} }
+    if (zeroGainRef.current) { try { zeroGainRef.current.disconnect(); } catch { } }
+    if (micNodeRef.current) { try { micNodeRef.current.disconnect(); } catch { } }
     processorRef.current = null;
     zeroGainRef.current = null;
     micNodeRef.current = null;
-    try { mediaStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+    try { mediaStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
     mediaStreamRef.current = null;
 
-    if (liveRecording && musicTrack.buffer) {
-      const totalSamples = liveRecording.samples.length;
+    // Merge all chunks into a single buffer only at the end of recording
+    if (liveRecording && musicTrack.buffer && recordingChunksRef.current.length > 0) {
+      const chunks = recordingChunksRef.current;
+      const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
       if (totalSamples > 0) {
+        // Merge all chunks into one Float32Array (done only once at the end)
+        const mergedSamples = new Float32Array(totalSamples);
+        let offset = 0;
+        for (const chunk of chunks) {
+          mergedSamples.set(chunk, offset);
+          offset += chunk.length;
+        }
+
         const buf = audioContext.createBuffer(1, totalSamples, sampleRate);
-        buf.getChannelData(0).set(liveRecording.samples, 0);
+        buf.getChannelData(0).set(mergedSamples, 0);
         const startTime = liveRecording.startTime;
         const endTime = startTime + totalSamples / sampleRate;
         const newSegment: RecordingSegment = { buffer: buf, startTime, endTime };
@@ -501,12 +559,12 @@ const AudioEditor: React.FC<AudioEditorProps> = ({ songId, recordingId, onSave, 
           return out;
         });
       }
+      // Clear the chunks ref
+      recordingChunksRef.current = [];
     }
     setLiveRecording(null);
-    setVoiceTrack(prev => ({ ...prev, volume: 0.8 }));
-    if (voiceGainRef.current) voiceGainRef.current.gain.value = 0.8;
-    if (musicSourceRef.current) { try { musicSourceRef.current.stop(); } catch {} musicSourceRef.current = null; }
-    if (voiceSourceRef.current) { try { voiceSourceRef.current.stop(); } catch {} voiceSourceRef.current = null; }
+    if (musicSourceRef.current) { try { musicSourceRef.current.stop(); } catch { } musicSourceRef.current = null; }
+    if (voiceSourceRef.current) { try { voiceSourceRef.current.stop(); } catch { } voiceSourceRef.current = null; }
     setIsRecording(false);
     setIsPlaying(false);
   };

@@ -1,0 +1,35 @@
+# Fix Choppy Audio Recording
+
+The "stuttering" (picotada) audio is caused by an inefficient memory operation inside the [onaudioprocess](file:///c:/Users/Victor%20Seidel/OneDrive/Documentos/@99Freelas/melodize/src/AudioEditor.tsx#434-446) event handler. Currently, for every ~46ms of audio recorded, the application creates a new array and copies **all previous samples** plus the new ones. This means recording 10 seconds of audio involves copying millions of float values hundreds of times, blocking the main thread and causing the audio engine to drop frames.
+
+## User Review Required
+> [!IMPORTANT]
+> This change optimizes the memory handling during recording. It should not change the UI behavior but will significantly improve recording quality and performance.
+
+## Proposed Changes
+
+### [src](file:///c:/Users/Victor%20Seidel/OneDrive/Documentos/@99Freelas/melodize/src)
+
+#### [MODIFY] [AudioEditor.tsx](file:///c:/Users/Victor%20Seidel/OneDrive/Documentos/@99Freelas/melodize/src/AudioEditor.tsx)
+- Remove `liveRecording` state potentially or change its type to not hold the full sample array.
+- Introduce `recordingChunksRef` (useRef) to store raw audio buffers during recording without triggering re-renders.
+- Update [onaudioprocess](file:///c:/Users/Victor%20Seidel/OneDrive/Documentos/@99Freelas/melodize/src/AudioEditor.tsx#434-446) to simply push new buffers to `recordingChunksRef` (O(1) operation).
+- Decouple waveform visualization from the recording loop:
+    - Use a separate `requestAnimationFrame` loop or throttle state updates to redraw the recording waveform.
+    - Or, simply update a "duration" state and have the canvas draw read from the ref.
+- Update [stopRecording](file:///c:/Users/Victor%20Seidel/OneDrive/Documentos/@99Freelas/melodize/src/AudioEditor.tsx#457-513) to merge the chunks from `recordingChunksRef` into a single `Float32Array` only once at the end.
+
+## Verification Plan
+
+### Manual Verification
+1.  **Recording Test**:
+    - Start recording a voice track.
+    - Talk continuously for at least 30 seconds (excessive copying usually shows up after a few seconds).
+    - Stop recording.
+    - Play back the recording.
+    - **Expected Result**: The audio should be smooth, continuous, and free of "skips" or "stutters".
+2.  **Waveform Visualization**:
+    - Verify that the red recording waveform still draws in real-time (or near real-time) as you record.
+3.  **Saving**:
+    - Save the recording and reload the page.
+    - Verify the saved audio plays back correctly.
